@@ -439,7 +439,7 @@ class UnifiedCalendarManager {
         console.log(`[UnifiedCalendarManager] Данные месяца ${monthKey} загружены`);
     }
 
-ent) {
+applyWeekendDiscount(discountPercent) {
         const monthKey = this.currentMonthKey;
         if (!monthKey) return;
 
