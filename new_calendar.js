@@ -1,245 +1,4 @@
 /**
-     * Навигация по месяцам (prev/next)
-     * @param {string} direction - Направление навигации ('prev' или 'next')
-     */
-    navigateMonth(direction) {
-        const monthYearElement = document.querySelector('[current_month_year]');
-        if (!monthYearElement) {
-            console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-            return;
-        }
-
-        try {
-            const currentMonthText = monthYearElement.textContent.trim();
-            let [monthName, year] = currentMonthText.split(' ');
-
-            if (!monthName || !year || !MONTH_MAP[monthName]) {
-                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${currentMonthText}`);
-                return;
-            }
-
-            let monthNum = MONTH_MAP[monthName];
-            let yearNum = Number(year);
-
-            if (isNaN(yearNum)) {
-                console.error(`[UnifiedCalendarManager] Некорректный год: ${year}`);
-                return;
-            }
-
-            if (direction === 'prev') {
-                if (monthNum === '01') {
-                    monthNum = '12';
-                    yearNum -= 1;
-                } else {
-                    monthNum = (parseInt(monthNum) - 1).toString().padStart(2, '0');
-                }
-            } else if (direction === 'next') {
-                if (monthNum === '12') {
-                    monthNum = '01';
-                    yearNum += 1;
-                } else {
-                    monthNum = (parseInt(monthNum) + 1).toString().padStart(2, '0');
-                }
-            } else {
-                console.error(`[UnifiedCalendarManager] Неизвестное направление навигации: ${direction}`);
-                return;
-            }
-
-            // Проверка на валидность результата
-            if (yearNum < 1900 || yearNum > 2100) {
-                console.error(`[UnifiedCalendarManager] Выход за допустимые границы года: ${yearNum}`);
-                return;
-            }
-
-            monthYearElement.textContent = `${REVERSE_MONTH_MAP[monthNum]} ${yearNum}`;
-
-            // Обновляем текущий ключ месяца
-            this.currentMonthKey = `${yearNum}-${monthNum}`;
-
-            // Загружаем данные для нового месяца
-            this.loadMonthData(this.currentMonthKey);
-
-            // Обновляем календарь
-            this.updateCalendar();
-
-            console.log(`[UnifiedCalendarManager] Навигация выполнена: ${direction}, новый месяц: ${REVERSE_MONTH_MAP[monthNum]} ${yearNum}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при навигации по месяцам:', error);
-        }
-    }
-
-    /**
-     * Обработка клика по заблокированному дню
-     * @param {HTMLElement} dayWrapper - DOM-элемент ячейки дня
-     */
-    handleBlockedDayClick(dayWrapper) {
-        try {
-            if (!dayWrapper || !dayWrapper.classList.contains('is-blocked')) {
-                console.warn('[UnifiedCalendarManager] Передан неверный элемент дня');
-                return;
-            }
-
-            // Переключаем класс active
-            const isActive = dayWrapper.classList.contains('is-blocked-active');
-
-            if (isActive) {
-                dayWrapper.classList.remove('is-blocked-active');
-            } else {
-                dayWrapper.classList.add('is-blocked-active');
-
-                // Активируем кнопку блокировки
-                const button_block = document.querySelector('[button_block]');
-                if (button_block) {
-                    button_block.classList.add('is--add-service');
-                }
-            }
-
-            const cell = dayWrapper.querySelector('[day]');
-            if (!cell) {
-                console.warn('[UnifiedCalendarManager] Элемент дня не найден');
-                return;
-            }
-
-            const day = parseInt(cell.textContent.trim());
-            if (isNaN(day) || day < 1 || day > 31) {
-                console.error(`[UnifiedCalendarManager] Некорректный день: ${cell.textContent.trim()}`);
-                return;
-            }
-
-            // Получаем текущие данные о месяце и годе
-            const monthYearElement = document.querySelector('[current_month_year]');
-            if (!monthYearElement) {
-                console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-                return;
-            }
-
-            const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
-            if (!currentMonthName || !currentYear || !MONTH_MAP[currentMonthName]) {
-                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${monthYearElement.textContent}`);
-                return;
-            }
-
-            const monthNum = MONTH_MAP[currentMonthName];
-            const yearNum = parseInt(currentYear);
-            if (isNaN(yearNum)) {
-                console.error(`[UnifiedCalendarManager] Некорректный год: ${currentYear}`);
-                return;
-            }
-
-            // Формируем ключ и строку даты
-            const monthYearKey = `${yearNum}-${monthNum}`;
-            const dateString = this.formatDate(day, monthNum, yearNum);
-
-            // Если день был активно заблокирован и стал неактивным, то полностью снимаем блокировку
-            if (!dayWrapper.classList.contains('is-blocked-active')) {
-                dayWrapper.classList.remove('is-blocked');
-
-                // Восстанавливаем базовую цену
-                const servicePriceElement = dayWrapper.querySelector('[service-price]');
-                if (servicePriceElement) {
-                    servicePriceElement.textContent = this.getBasePrice();
-                }
-
-                // Удаляем из списка заблокированных
-                if (this.calendarData.blockedDates[monthYearKey]) {
-                    this.calendarData.blockedDates[monthYearKey] = this.calendarData.blockedDates[monthYearKey].filter(item => {
-                        if (typeof item === 'object' && item.date) {
-                            return item.date !== dateString;
-                        }
-                        return item !== dateString;
-                    });
-
-                    // Обновляем цену в базовых ценах
-                    if (this.calendarData.basePrices[monthYearKey]) {
-                        const prices = this.calendarData.basePrices[monthYearKey].prices;
-                        const priceIndex = prices.findIndex(item => item.date === dateString);
-
-                        if (priceIndex !== -1) {
-                            prices[priceIndex].price = this.getBasePrice();
-                        }
-                    }
-
-                    this.saveMonthData(monthYearKey);
-                }
-            }
-
-            console.log(`[UnifiedCalendarManager] Обработан клик по заблокированному дню: ${dateString}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при обработке клика по заблокированному дню:', error);
-        }
-    }
-
-    /**
-     * Исключение дня из выбранного диапазона
-     * @param {HTMLElement} dayWrapper - DOM-элемент ячейки дня
-     * @param {Object} fullDate - Объект даты
-     * @param {number} currentDate - Текущий день
-     * @param {string} currentMonthName - Название текущего месяца
-     * @param {string} currentYear - Текущий год
-     */
-    excludeDay(dayWrapper, fullDate, currentDate, currentMonthName, currentYear) {
-        try {
-            if (!dayWrapper || !fullDate || !fullDate.timestamp) {
-                console.error('[UnifiedCalendarManager] Неверные параметры для исключения дня');
-                return;
-            }
-
-            const servicePriceElement = dayWrapper.querySelector('[service-price]');
-            if (!servicePriceElement) {
-                console.warn('[UnifiedCalendarManager] Элемент цены не найден');
-                return;
-            }
-
-            // Получаем базовую стоимость
-            const basePrice = this.getBasePrice();
-
-            // Устанавливаем базовую стоимость для исключаемого дня
-            servicePriceElement.textContent = basePrice;
-
-            // Добавляем день в исключения и удаляем класс is-active
-            this.calendarData.excludedDates.add(fullDate.timestamp);
-            dayWrapper.classList.remove('is-active');
-
-            // Удаляем сохраненную скидку для этого дня
-            if (this.calendarData.dateDiscounts[fullDate.timestamp]) {
-                delete this.calendarData.dateDiscounts[fullDate.timestamp];
-            }
-
-            // Обновляем базовые цены
-            const monthKey = this.currentMonthKey;
-            if (!monthKey) {
-                console.warn('[UnifiedCalendarManager] Текущий ключ месяца не определен');
-                return;
-            }
-
-            const monthNum = MONTH_MAP[currentMonthName];
-            if (!monthNum) {
-                console.error(`[UnifiedCalendarManager] Неизвестный месяц: ${currentMonthName}`);
-                return;
-            }
-
-            const date = this.formatDate(currentDate, monthNum, parseInt(currentYear));
-
-            if (this.calendarData.basePrices[monthKey]) {
-                const prices = this.calendarData.basePrices[monthKey].prices;
-                const priceIndex = prices.findIndex(item => item.date === date);
-                if (priceIndex !== -1) {
-                    prices[priceIndex].price = basePrice;
-                    this.saveMonthData(monthKey);
-                }
-            }
-
-            // Очищаем состояние выбора
-            this.clearWaitState();
-            this.tempSelection.start = null;
-            this.tempSelection.startMonth = null;
-            this.tempSelection.startYear = null;
-
-            console.log(`[UnifiedCalendarManager] День исключен из диапазона: ${date}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при исключении дня из диапазона:', error);
-        }
-    }/**
  * Unified Calendar Management System
  * Оптимизированная версия, объединяющая функциональность из трех файлов
  *
@@ -620,9 +379,9 @@ class UnifiedCalendarManager {
      * Загрузка глобальных настроек из localStorage
      */
     loadGlobalSettings() {
-        const storedSettings = localStorage.getItem('calendarGlobalSettings');
+        const storedSettings = this.storage.load('calendarGlobalSettings');
         if (storedSettings) {
-            this.calendarData.globalSettings = JSON.parse(storedSettings);
+            this.calendarData.globalSettings = storedSettings;
         }
 
         // Обновляем поля ввода
@@ -640,8 +399,7 @@ class UnifiedCalendarManager {
         const defaultCost = this.getBasePrice();
         this.calendarData.globalSettings.defaultCost = defaultCost;
 
-        localStorage.setItem('calendarGlobalSettings',
-                            JSON.stringify(this.calendarData.globalSettings));
+        this.storage.save('calendarGlobalSettings', this.calendarData.globalSettings);
 
         // Обновляем базовую стоимость для всех месяцев
         Object.keys(this.calendarData.basePrices).forEach(monthKey => {
@@ -681,6 +439,253 @@ class UnifiedCalendarManager {
         console.log(`[UnifiedCalendarManager] Данные месяца ${monthKey} загружены`);
     }
 
+ent) {
+        const monthKey = this.currentMonthKey;
+        if (!monthKey) return;
+
+        const [year, month] = monthKey.split('-');
+        const basePrice = this.getBasePrice();
+        const discountedPrice = this.applyDiscount(basePrice, discountPercent);
+
+        // Применяем скидку ко всем выходным текущего месяца
+        const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(parseInt(year), parseInt(month) - 1, day);
+            const isWeekend = (date.getDay() === 0 || date.getDay() === 6); // воскресенье или суббота
+
+            if (isWeekend) {
+                const dateString = this.formatDate(day, month, year);
+                const timestamp = date.getTime();
+
+                // Пропускаем заблокированные или исключенные дни
+                if (this.isDateExcluded(timestamp) ||
+                    this.isDateBlocked(dateString, monthKey)) continue;
+
+                // Сохраняем цену со скидкой
+                this.calendarData.dateDiscounts[timestamp] = discountedPrice;
+
+                // Обновляем базовые цены
+                if (!this.calendarData.basePrices[monthKey]) {
+                    // Инициализируем данные для месяца, если их еще нет
+                    this.calendarData.basePrices[monthKey] = {
+                        prices: [],
+                        defaultCost: basePrice
+                    };
+                }
+
+                const prices = this.calendarData.basePrices[monthKey].prices;
+                const priceIndex = prices.findIndex(item => item.date === dateString);
+
+                if (priceIndex !== -1) {
+                    prices[priceIndex].price = discountedPrice;
+                } else {
+                    prices.push({ date: dateString, price: discountedPrice });
+                }
+
+                // Находим ячейку для этого дня и обновляем ее внешний вид
+                document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
+                    const dayEl = dayWrapper.querySelector('[day]');
+                    if (dayEl && parseInt(dayEl.textContent.trim()) === day) {
+                        // Добавляем класс is-active для обозначения скидки
+                        dayWrapper.classList.add('is-active');
+
+                        // Обновляем отображаемую цену
+                        const servicePriceElement = dayWrapper.querySelector('[service-price]');
+                        if (servicePriceElement) {
+                            servicePriceElement.textContent = discountedPrice;
+                        }
+                    }
+                });
+            }
+        }
+
+        this.saveMonthData(monthKey);
+        this.updateAllDaysDisplay();
+    }
+
+    /**
+     * Сброс скидок для выходных дней
+     */
+    resetWeekendDiscounts() {
+        const monthKey = this.currentMonthKey;
+        if (!monthKey) return;
+
+        const [year, month] = monthKey.split('-');
+        const basePrice = this.getBasePrice();
+        const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(parseInt(year), parseInt(month) - 1, day);
+            const isWeekend = (date.getDay() === 0 || date.getDay() === 6); // воскресенье или суббота
+
+            if (isWeekend) {
+                const dateString = this.formatDate(day, month, year);
+                const timestamp = date.getTime();
+
+                // Пропускаем заблокированные дни
+                if (this.isDateBlocked(dateString, monthKey)) continue;
+
+                // Удаляем скидку
+                delete this.calendarData.dateDiscounts[timestamp];
+
+                // Обновляем базовые цены
+                if (this.calendarData.basePrices[monthKey]) {
+                    const prices = this.calendarData.basePrices[monthKey].prices;
+                    const priceIndex = prices.findIndex(item => item.date === dateString);
+
+                    if (priceIndex !== -1) {
+                        prices[priceIndex].price = basePrice;
+                    }
+                }
+            }
+        }
+
+        this.saveMonthData(monthKey);
+        this.updateAllDaysDisplay();
+    }
+
+    /**
+     * Блокировка выбранного диапазона дат
+     */
+    blockSelectedRange() {
+        const chosenDatesElement = document.querySelector('[chosen-dates]');
+        if (!chosenDatesElement) {
+            console.warn('[UnifiedCalendarManager] Элемент выбранных дат не найден');
+            return;
+        }
+
+        try {
+            // Извлекаем диапазон дат
+            const dateRangeText = chosenDatesElement.textContent.trim();
+            const dateMatch = dateRangeText.match(/(\d+)\s*-\s*(\d+)\s*(\w+)/);
+
+            if (!dateMatch) {
+                console.error(`[UnifiedCalendarManager] Не удалось распознать диапазон дат: ${dateRangeText}`);
+                return;
+            }
+
+            const startDay = parseInt(dateMatch[1]);
+            const endDay = parseInt(dateMatch[2]);
+            const monthName = dateMatch[3];
+
+            if (!startDay || !endDay || !monthName) {
+                console.error(`[UnifiedCalendarManager] Некорректные параметры диапазона: начало=${startDay}, конец=${endDay}, месяц=${monthName}`);
+                return;
+            }
+
+            // Получаем текущий месяц и год
+            const monthYearElement = document.querySelector('[current_month_year]');
+            if (!monthYearElement) {
+                console.error('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
+                return;
+            }
+
+            const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
+            if (!MONTH_MAP[currentMonthName]) {
+                console.error(`[UnifiedCalendarManager] Неизвестный месяц: ${currentMonthName}`);
+                return;
+            }
+
+            const currentMonthNumber = MONTH_MAP[currentMonthName];
+            const yearNum = parseInt(currentYear);
+
+            // Ключ для текущего месяца и года
+            const monthYearKey = `${currentYear}-${currentMonthNumber}`;
+
+            // Инициализируем массив для этого месяца, если его нет
+            if (!this.calendarData.blockedDates[monthYearKey]) {
+                this.calendarData.blockedDates[monthYearKey] = [];
+            }
+
+            console.log(`[UnifiedCalendarManager] Блокировка диапазона дат: ${startDay}-${endDay} ${currentMonthName} ${currentYear}`);
+
+            // Создаем DocumentFragment для оптимизации DOM-операций
+            const fragment = document.createDocumentFragment();
+            const blockedDays = [];
+
+            // Блокируем дни в диапазоне
+            for (let day = startDay; day <= endDay; day++) {
+                const dateString = this.formatDate(day, currentMonthNumber, yearNum);
+
+                // Проверяем, существует ли уже такая дата в массиве
+                const existingIndex = this.calendarData.blockedDates[monthYearKey].findIndex(item => {
+                    if (typeof item === 'object' && item.date) {
+                        return item.date === dateString;
+                    }
+                    return item === dateString;
+                });
+
+                // Добавляем или обновляем элемент с ценой 0
+                if (existingIndex === -1) {
+                    this.calendarData.blockedDates[monthYearKey].push({
+                        date: dateString,
+                        price: 0
+                    });
+                } else {
+                    // Если элемент был строкой, преобразуем в объект
+                    if (typeof this.calendarData.blockedDates[monthYearKey][existingIndex] === 'string') {
+                        this.calendarData.blockedDates[monthYearKey][existingIndex] = {
+                            date: dateString,
+                            price: 0
+                        };
+                    } else {
+                        // Иначе просто обновляем цену
+                        this.calendarData.blockedDates[monthYearKey][existingIndex].price = 0;
+                    }
+                }
+
+                // Также обновляем данные о ценах
+                if (!this.calendarData.basePrices[monthYearKey]) {
+                    this.calendarData.basePrices[monthYearKey] = {
+                        prices: [],
+                        defaultCost: this.getBasePrice()
+                    };
+                }
+
+                const prices = this.calendarData.basePrices[monthYearKey].prices;
+                const priceIndex = prices.findIndex(item => item.date === dateString);
+
+                if (priceIndex !== -1) {
+                    prices[priceIndex].price = 0;
+                } else {
+                    prices.push({ date: dateString, price: 0 });
+                }
+
+                // Добавляем день в список заблокированных
+                blockedDays.push(day);
+            }
+
+            // Обновляем UI для заблокированных дней
+            blockedDays.forEach(day => {
+                document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
+                    const dayEl = dayWrapper.querySelector('[day]');
+                    if (dayEl && parseInt(dayEl.textContent.trim()) === day) {
+                        // Добавляем классы блокировки
+                        dayWrapper.classList.add('is-blocked');
+                        dayWrapper.classList.add('is-blocked-active');
+
+                        // Устанавливаем цену в 0
+                        const servicePriceElement = dayWrapper.querySelector('[service-price]');
+                        if (servicePriceElement) {
+                            servicePriceElement.textContent = '0';
+                        }
+                    }
+                });
+            });
+
+            // Сохраняем обновленные данные
+            this.saveMonthData(monthYearKey);
+
+            // Обновляем отображение
+            this.updateAllDaysDisplay();
+
+            console.log(`[UnifiedCalendarManager] Диапазон дат успешно заблокирован. Заблокировано дней: ${blockedDays.length}`);
+        } catch (error) {
+            console.error('[UnifiedCalendarManager] Ошибка при блокировке диапазона дат:', error);
+        }
+    }
+
     /**
      * Сохранение данных месяца в localStorage
      * @param {string} monthKey - Ключ месяца в формате YYYY-MM
@@ -704,12 +709,253 @@ class UnifiedCalendarManager {
     }
 
     /**
-     * Гарантирует наличие базовых цен для всех дней месяца
-     * @param {string} monthKey - Ключ месяца в формате YYYY-MM
+     * Обновление отображения всех дней в календаре
      */
-    ensureBasePrices(monthKey) {
+    updateAllDaysDisplay() {
+        const monthYearElement = document.querySelector('[current_month_year]');
+        if (!monthYearElement) {
+            console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
+            return;
+        }
+
+        try {
+            const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
+            if (!currentMonthName || !currentYear || !MONTH_MAP[currentMonthName]) {
+                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${monthYearElement.textContent}`);
+                return;
+            }
+
+            const basePrice = this.getBasePrice();
+            const yearNum = parseInt(currentYear);
+            const monthNum = MONTH_MAP[currentMonthName];
+            const monthYearKey = `${currentYear}-${monthNum}`;
+
+            // Проходим по всем ячейкам календаря
+            const dayWrappers = document.querySelectorAll('.calendar_day-wrapper');
+            dayWrappers.forEach(dayWrapper => {
+                const cell = dayWrapper.querySelector('[day]');
+                if (!cell) return;
+
+                const dayText = cell.textContent.trim();
+                if (dayText === "") return;
+
+                try {
+                    const day = parseInt(dayText);
+                    const fullDate = this.createFullDate(day, currentMonthName, yearNum);
+                    if (!fullDate) return;
+
+                    const timestamp = fullDate.timestamp;
+                    const dateString = this.formatDate(day, monthNum, yearNum);
+
+                    // Проверяем статусы
+                    const isInRange = this.isDateInRanges(fullDate);
+                    const isExcluded = this.isDateExcluded(timestamp);
+                    const isBlocked = this.isDateBlocked(dateString, monthYearKey);
+                    const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
+
+                    // Обновляем классы для отображения статуса
+                    dayWrapper.classList.toggle('is-selected', isInRange && !isExcluded && !isBlocked);
+                    dayWrapper.classList.toggle('is-active', hasDiscount && !isExcluded && !isBlocked);
+                    dayWrapper.classList.toggle('is-blocked', isBlocked);
+                    dayWrapper.classList.toggle('is-blocked-active', isBlocked);
+
+                    // Обновляем отображение цены
+                    const servicePriceElement = dayWrapper.querySelector('[service-price]');
+                    if (servicePriceElement) {
+                        if (isBlocked) {
+                            servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthYearKey);
+                        } else if (isExcluded) {
+                            servicePriceElement.textContent = basePrice;
+                        } else if (hasDiscount) {
+                            servicePriceElement.textContent = this.calendarData.dateDiscounts[timestamp];
+                        } else {
+                            servicePriceElement.textContent = basePrice;
+                        }
+                    }
+
+                    // Отмечаем первый день диапазона при выборе
+                    if (this.tempSelection.start &&
+                        this.tempSelection.startMonth === currentMonthName &&
+                        this.tempSelection.startYear === yearNum &&
+                        this.tempSelection.start === day) {
+                        dayWrapper.classList.add('is-wait');
+                    }
+                } catch (error) {
+                    console.error(`[UnifiedCalendarManager] Ошибка при обработке дня ${dayText}:`, error);
+                }
+            });
+
+            // Обновляем данные о ценах в хранилище
+            if (this.calendarData.basePrices[monthYearKey]) {
+                this.saveMonthData(monthYearKey);
+            }
+
+            console.log(`[UnifiedCalendarManager] Отображение календаря обновлено для месяца ${monthYearKey}`);
+        } catch (error) {
+            console.error('[UnifiedCalendarManager] Ошибка при обновлении отображения календаря:', error);
+        }
+    }
+    
+    /**
+     * Генерация календаря для указанного месяца и года
+     * @param {string} dateString - Строка даты в формате "MM.YYYY"
+     */
+    generateCalendar(dateString) {
+        if (!dateString || !dateString.includes('.')) {
+            console.error(`[UnifiedCalendarManager] Некорректный формат даты: ${dateString}`);
+            return;
+        }
+
+        try {
+            const [month, year] = dateString.split('.').map(Number);
+            if (isNaN(month) || isNaN(year) || month < 1 || month > 12 || year < 1900 || year > 2100) {
+                console.error(`[UnifiedCalendarManager] Недопустимые значения месяца или года: месяц=${month}, год=${year}`);
+                return;
+            }
+
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+            const daysInMonth = lastDay.getDate();
+
+            const calendarArray = [];
+            let week = Array(7).fill('');
+            const adjustedFirstDay = (firstDay.getDay() === 0) ? 6 : firstDay.getDay() - 1;
+
+            let dayCounter = 1;
+            for (let i = 0; i < adjustedFirstDay; i++) {
+                week[i] = '';
+            }
+
+            for (let col = adjustedFirstDay; col < 7; col++) {
+                week[col] = dayCounter++;
+            }
+            calendarArray.push(week);
+
+            while (dayCounter <= daysInMonth) {
+                week = Array(7).fill('');
+                for (let col = 0; col < 7 && dayCounter <= daysInMonth; col++) {
+                    week[col] = dayCounter++;
+                }
+                calendarArray.push(week);
+            }
+
+            // Сбрасываем состояние блокировки
+            const selectedElements_blocked = document.querySelectorAll('.calendar_day-wrapper.is-blocked.is-blocked-active');
+            const button_block = document.querySelector('[button_block]');
+            if (button_block) button_block.classList.remove('is--add-service');
+
+            selectedElements_blocked.forEach(element => {
+                element.classList.remove('is-blocked-active');
+            });
+
+            // Заполняем календарь датами используя DocumentFragment для оптимизации
+            const fragment = document.createDocumentFragment();
+            let flatDays = calendarArray.flat();
+
+            for (let i = 0; i < 42; i++) {
+                const cell = document.querySelector(`[day='${i}']`);
+                const dayWrapper = cell ? cell.closest('.calendar_day-wrapper') : null;
+                if (!cell || !dayWrapper) continue;
+
+                try {
+                    const day = flatDays[i];
+                    const servicePrice = dayWrapper.querySelector('[service-price]');
+                    const priceCurrency = dayWrapper.querySelector('[price-currency]');
+
+                    if (day) {
+                        cell.textContent = day;
+                        dayWrapper.classList.remove('not_exist');
+                        if (servicePrice) {
+                            servicePrice.style.display = '';
+                        }
+                        if (priceCurrency) {
+                            priceCurrency.style.display = '';
+                        }
+                    } else {
+                        cell.textContent = '';
+                        dayWrapper.classList.add('not_exist');
+                        if (servicePrice) {
+                            servicePrice.style.display = 'none';
+                        }
+                        if (priceCurrency) {
+                            priceCurrency.style.display = 'none';
+                        }
+                    }
+                } catch (error) {
+                    console.error(`[UnifiedCalendarManager] Ошибка при генерации ячейки ${i}:`, error);
+                }
+            }
+
+            this.updateAllDaysDisplay();
+            console.log(`[UnifiedCalendarManager] Календарь сгенерирован для ${month}.${year}`);
+        } catch (error) {
+            console.error('[UnifiedCalendarManager] Ошибка при генерации календаря:', error);
+        }
+    }
+
+    /**
+     * Установка текущей даты
+     */
+    setCurrentDate() {
+        try {
+            const now = new Date();
+            if (isNaN(now.getTime())) {
+                console.error('[UnifiedCalendarManager] Ошибка получения текущей даты');
+                return;
+            }
+
+            const currentMonth = REVERSE_MONTH_MAP[(now.getMonth() + 1).toString().padStart(2, '0')];
+            const currentYear = now.getFullYear();
+            const monthYearElement = document.querySelector('[current_month_year]');
+
+            if (monthYearElement) {
+                monthYearElement.textContent = `${currentMonth} ${currentYear}`;
+            } else {
+                console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
+            }
+
+            console.log(`[UnifiedCalendarManager] Установлена текущая дата: ${currentMonth} ${currentYear}`);
+        } catch (error) {
+            console.error('[UnifiedCalendarManager] Ошибка при установке текущей даты:', error);
+        }
+    }
+
+    /**
+     * Обновление календаря для текущего месяца
+     */
+    updateCalendar() {
+        const monthYearElement = document.querySelector('[current_month_year]');
+        if (!monthYearElement) {
+            console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
+            return;
+        }
+
+        try {
+            const currentMonthText = monthYearElement.textContent.trim();
+            const [monthName, year] = currentMonthText.split(' ');
+
+            if (!monthName || !year || !MONTH_MAP[monthName]) {
+                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${currentMonthText}`);
+                return;
+            }
+
+            const current_month = `${MONTH_MAP[monthName]}.${year}`;
+            this.generateCalendar(current_month);
+            this.loadMonthPrices();
+
+            console.log(`[UnifiedCalendarManager] Календарь обновлен для ${monthName} ${year}`);
+        } catch (error) {
+            console.error('[UnifiedCalendarManager] Ошибка при обновлении календаря:', error);
+        }
+    }
+
+    /**
+     * Загрузка цен для текущего месяца
+     */
+    loadMonthPrices() {
+        const monthKey = this.currentMonthKey;
         if (!monthKey) {
-            console.error('[UnifiedCalendarManager] Не указан ключ месяца для обеспечения базовых цен');
+            console.error('[UnifiedCalendarManager] Текущий ключ месяца не определен');
             return;
         }
 
@@ -720,18 +966,28 @@ class UnifiedCalendarManager {
                 return;
             }
 
-            const existingDates = this.calendarData.basePrices[monthKey].prices.map(item => item.date);
+            // Если нет данных для текущего месяца, загружаем их
+            if (!this.calendarData.basePrices[monthKey]) {
+                this.loadMonthData(monthKey);
+            }
+
+            const monthPrices = this.calendarData.basePrices[monthKey].prices || [];
             const defaultCost = this.calendarData.basePrices[monthKey].defaultCost;
 
-            // Получаем все дни текущего месяца
+            // Создаем DocumentFragment для оптимизации DOM-операций
+            const fragment = document.createDocumentFragment();
+            const updatedCells = [];
+
             document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
                 const dayElement = dayWrapper.querySelector('[day]');
-                if (!dayElement) return;
+                const servicePriceElement = dayWrapper.querySelector('[service-price]');
 
-                const dayText = dayElement.textContent.trim();
-                if (dayText === "") return;
+                if (!dayElement || !servicePriceElement) return;
 
                 try {
+                    const dayText = dayElement.textContent.trim();
+                    if (dayText === "") return;
+
                     const day = parseInt(dayText);
                     if (isNaN(day) || day < 1 || day > 31) {
                         console.warn(`[UnifiedCalendarManager] Некорректный день месяца: ${dayText}`);
@@ -739,65 +995,39 @@ class UnifiedCalendarManager {
                     }
 
                     const date = this.formatDate(day, month, year);
+                    const dateString = this.formatDate(day, month, year);
 
-                    if (!existingDates.includes(date)) {
-                        this.calendarData.basePrices[monthKey].prices.push({
-                            date: date,
-                            price: defaultCost
-                        });
+                    // Проверяем статусы
+                    const isBlocked = this.isDateBlocked(dateString, monthKey);
+
+                    if (isBlocked) {
+                        // Если день заблокирован, устанавливаем классы и цену 0
+                        dayWrapper.classList.add('is-blocked');
+                        dayWrapper.classList.add('is-blocked-active');
+                        servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthKey);
+                    } else {
+                        // Иначе используем цену из базовых цен или по умолчанию
+                        const priceObj = monthPrices.find(item => item.date === date);
+                        const finalPrice = priceObj ? priceObj.price : defaultCost;
+                        servicePriceElement.textContent = finalPrice;
+
+                        // Проверяем, не является ли это днем со скидкой
+                        const timestamp = new Date(parseInt(year), parseInt(month) - 1, day).getTime();
+                        const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
+                        dayWrapper.classList.toggle('is-active', hasDiscount);
                     }
+
+                    // Добавляем ячейку в список обновленных
+                    updatedCells.push(day);
                 } catch (error) {
-                    console.error('[UnifiedCalendarManager] Ошибка при обработке дня месяца:', error);
+                    console.error('[UnifiedCalendarManager] Ошибка при обработке дня:', error);
                 }
             });
+
+            console.log(`[UnifiedCalendarManager] Загружены цены для месяца ${monthKey}. Обновлено ячеек: ${updatedCells.length}`);
         } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при обеспечении базовых цен:', error);
+            console.error('[UnifiedCalendarManager] Ошибка при загрузке цен для месяца:', error);
         }
-    }
-        // Гарантируем наличие цен для всех дней
-        this.ensureBasePrices(monthKey);
-    }
-
-    /**
-     * Сохранение данных месяца в localStorage
-     */
-    saveMonthData(monthKey) {
-        localStorage.setItem(`monthData-${monthKey}`,
-                            JSON.stringify(this.calendarData.basePrices[monthKey]));
-
-        // Сохраняем заблокированные даты
-        localStorage.setItem('blockedDatesMap',
-                            JSON.stringify(this.calendarData.blockedDates));
-    }
-
-    /**
-     * Гарантирует наличие базовых цен для всех дней месяца
-     */
-    ensureBasePrices(monthKey) {
-        if (!monthKey) return;
-
-        const [year, month] = monthKey.split('-');
-        const existingDates = this.calendarData.basePrices[monthKey].prices.map(item => item.date);
-        const defaultCost = this.calendarData.basePrices[monthKey].defaultCost;
-
-        // Получаем все дни текущего месяца
-        document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
-            const dayElement = dayWrapper.querySelector('[day]');
-            if (!dayElement) return;
-
-            const dayText = dayElement.textContent.trim();
-            if (dayText === "") return;
-
-            const day = parseInt(dayText);
-            const date = this.formatDate(day, month, year);
-
-            if (!existingDates.includes(date)) {
-                this.calendarData.basePrices[monthKey].prices.push({
-                    date: date,
-                    price: defaultCost
-                });
-            }
-        });
     }
 
     /**
@@ -959,9 +1189,6 @@ class UnifiedCalendarManager {
                 if (servicePriceElement) {
                     servicePriceElement.textContent = basePrice;
                 }
-
-                // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                fragment.appendChild(day.cloneNode(true));
             });
 
             // Обновляем состояние кнопок
@@ -1069,9 +1296,6 @@ class UnifiedCalendarManager {
                             if (servicePriceElement) {
                                 servicePriceElement.textContent = discountedPrice;
                             }
-
-                            // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                            fragment.appendChild(dayWrapper.cloneNode(true));
                         }
                     });
                 }
@@ -1098,27 +1322,6 @@ class UnifiedCalendarManager {
                 } else {
                     prices.push({ date: dateString, price: discountedPrice });
                 }
-
-                // Сохраняем данные для этого месяца
-                this.saveMonthData(monthKey);
-            }
-        }
-
-        // Обновляем отображение и состояние
-        this.updateAllDaysDisplay();
-        this.toggleSettingsVisibility(false);
-        this.tempSelection.isRangeConfirmed = true;
-        this.tempSelection.start = null;
-        this.tempSelection.startMonth = null;
-        this.tempSelection.startYear = null;
-        this.clearWaitState();
-    }Index = prices.findIndex(item => item.date === dateString);
-
-                if (priceIndex !== -1) {
-                    prices[priceIndex].price = discountedPrice;
-                } else {
-                    prices.push({ date: dateString, price: discountedPrice });
-                }
             }
 
             // Сохраняем данные для всех затронутых месяцев
@@ -1139,1120 +1342,3 @@ class UnifiedCalendarManager {
         } catch (error) {
             console.error('[UnifiedCalendarManager] Ошибка при применении скидки к диапазону:', error);
         }
-    }Index = prices.findIndex(item => item.date === dateString);
-
-                if (priceIndex !== -1) {
-                    prices[priceIndex].price = discountedPrice;
-                } else {
-                    prices.push({ date: dateString, price: discountedPrice });
-                }
-
-                // Сохраняем данные для этого месяца
-                this.saveMonthData(monthKey);
-            }
-        }
-
-        // Обновляем отображение и состояние
-        this.updateAllDaysDisplay();
-        this.toggleSettingsVisibility(false);
-        this.tempSelection.isRangeConfirmed = true;
-        this.tempSelection.start = null;
-        this.tempSelection.startMonth = null;
-        this.tempSelection.startYear = null;
-        this.clearWaitState();
-    }
-
-    /**
-     * Применение скидки для выходных дней
-     */
-    applyWeekendDiscount(discountPercent) {
-        const monthKey = this.currentMonthKey;
-        if (!monthKey) return;
-
-        const [year, month] = monthKey.split('-');
-        const basePrice = this.getBasePrice();
-        const discountedPrice = this.applyDiscount(basePrice, discountPercent);
-
-        // Применяем скидку ко всем выходным текущего месяца
-        const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(parseInt(year), parseInt(month) - 1, day);
-            const isWeekend = (date.getDay() === 0 || date.getDay() === 6); // воскресенье или суббота
-
-            if (isWeekend) {
-                const dateString = this.formatDate(day, month, year);
-                const timestamp = date.getTime();
-
-                // Пропускаем заблокированные или исключенные дни
-                if (this.isDateExcluded(timestamp) ||
-                    this.isDateBlocked(dateString, monthKey)) continue;
-
-                // Сохраняем цену со скидкой
-                this.calendarData.dateDiscounts[timestamp] = discountedPrice;
-
-                // Обновляем базовые цены
-                if (!this.calendarData.basePrices[monthKey]) {
-                    // Инициализируем данные для месяца, если их еще нет
-                    this.calendarData.basePrices[monthKey] = {
-                        prices: [],
-                        defaultCost: basePrice
-                    };
-                }
-
-                const prices = this.calendarData.basePrices[monthKey].prices;
-                const priceIndex = prices.findIndex(item => item.date === dateString);
-
-                if (priceIndex !== -1) {
-                    prices[priceIndex].price = discountedPrice;
-                } else {
-                    prices.push({ date: dateString, price: discountedPrice });
-                }
-
-                // Находим ячейку для этого дня и обновляем ее внешний вид
-                document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
-                    const dayEl = dayWrapper.querySelector('[day]');
-                    if (dayEl && parseInt(dayEl.textContent.trim()) === day) {
-                        // Добавляем класс is-active для обозначения скидки
-                        dayWrapper.classList.add('is-active');
-
-                        // Обновляем отображаемую цену
-                        const servicePriceElement = dayWrapper.querySelector('[service-price]');
-                        if (servicePriceElement) {
-                            servicePriceElement.textContent = discountedPrice;
-                        }
-                    }
-                });
-            }
-        }
-
-        this.saveMonthData(monthKey);
-        this.updateAllDaysDisplay();
-    }
-
-    /**
-     * Блокировка выбранного диапазона дат
-     */
-    blockSelectedRange() {
-        const chosenDatesElement = document.querySelector('[chosen-dates]');
-        if (!chosenDatesElement) {
-            console.warn('[UnifiedCalendarManager] Элемент выбранных дат не найден');
-            return;
-        }
-
-        try {
-            // Извлекаем диапазон дат
-            const dateRangeText = chosenDatesElement.textContent.trim();
-            const dateMatch = dateRangeText.match(/(\d+)\s*-\s*(\d+)\s*(\w+)/);
-
-            if (!dateMatch) {
-                console.error(`[UnifiedCalendarManager] Не удалось распознать диапазон дат: ${dateRangeText}`);
-                return;
-            }
-
-            const startDay = parseInt(dateMatch[1]);
-            const endDay = parseInt(dateMatch[2]);
-            const monthName = dateMatch[3];
-
-            if (!startDay || !endDay || !monthName) {
-                console.error(`[UnifiedCalendarManager] Некорректные параметры диапазона: начало=${startDay}, конец=${endDay}, месяц=${monthName}`);
-                return;
-            }
-
-            // Получаем текущий месяц и год
-            const monthYearElement = document.querySelector('[current_month_year]');
-            if (!monthYearElement) {
-                console.error('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-                return;
-            }
-
-            const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
-            if (!MONTH_MAP[currentMonthName]) {
-                console.error(`[UnifiedCalendarManager] Неизвестный месяц: ${currentMonthName}`);
-                return;
-            }
-
-            const currentMonthNumber = MONTH_MAP[currentMonthName];
-            const yearNum = parseInt(currentYear);
-
-            // Ключ для текущего месяца и года
-            const monthYearKey = `${currentYear}-${currentMonthNumber}`;
-
-            // Инициализируем массив для этого месяца, если его нет
-            if (!this.calendarData.blockedDates[monthYearKey]) {
-                this.calendarData.blockedDates[monthYearKey] = [];
-            }
-
-            console.log(`[UnifiedCalendarManager] Блокировка диапазона дат: ${startDay}-${endDay} ${currentMonthName} ${currentYear}`);
-
-            // Создаем DocumentFragment для оптимизации DOM-операций
-            const fragment = document.createDocumentFragment();
-            const blockedDays = [];
-
-            // Блокируем дни в диапазоне
-            for (let day = startDay; day <= endDay; day++) {
-                const dateString = this.formatDate(day, currentMonthNumber, yearNum);
-
-                // Проверяем, существует ли уже такая дата в массиве
-                const existingIndex = this.calendarData.blockedDates[monthYearKey].findIndex(item => {
-                    if (typeof item === 'object' && item.date) {
-                        return item.date === dateString;
-                    }
-                    return item === dateString;
-                });
-
-                // Добавляем или обновляем элемент с ценой 0
-                if (existingIndex === -1) {
-                    this.calendarData.blockedDates[monthYearKey].push({
-                        date: dateString,
-                        price: 0
-                    });
-                } else {
-                    // Если элемент был строкой, преобразуем в объект
-                    if (typeof this.calendarData.blockedDates[monthYearKey][existingIndex] === 'string') {
-                        this.calendarData.blockedDates[monthYearKey][existingIndex] = {
-                            date: dateString,
-                            price: 0
-                        };
-                    } else {
-                        // Иначе просто обновляем цену
-                        this.calendarData.blockedDates[monthYearKey][existingIndex].price = 0;
-                    }
-                }
-
-                // Также обновляем данные о ценах
-                if (!this.calendarData.basePrices[monthYearKey]) {
-                    this.calendarData.basePrices[monthYearKey] = {
-                        prices: [],
-                        defaultCost: this.getBasePrice()
-                    };
-                }
-
-                const prices = this.calendarData.basePrices[monthYearKey].prices;
-                const priceIndex = prices.findIndex(item => item.date === dateString);
-
-                if (priceIndex !== -1) {
-                    prices[priceIndex].price = 0;
-                } else {
-                    prices.push({ date: dateString, price: 0 });
-                }
-
-                // Добавляем день в список заблокированных
-                blockedDays.push(day);
-            }
-
-            // Обновляем UI для заблокированных дней
-            blockedDays.forEach(day => {
-                document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
-                    const dayEl = dayWrapper.querySelector('[day]');
-                    if (dayEl && parseInt(dayEl.textContent.trim()) === day) {
-                        // Добавляем классы блокировки
-                        dayWrapper.classList.add('is-blocked');
-                        dayWrapper.classList.add('is-blocked-active');
-
-                        // Устанавливаем цену в 0
-                        const servicePriceElement = dayWrapper.querySelector('[service-price]');
-                        if (servicePriceElement) {
-                            servicePriceElement.textContent = '0';
-                        }
-
-                        // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                        fragment.appendChild(dayWrapper.cloneNode(true));
-                    }
-                });
-            });
-
-            // Сохраняем обновленные данные
-            this.saveMonthData(monthYearKey);
-
-            // Обновляем отображение
-            this.updateAllDaysDisplay();
-
-            console.log(`[UnifiedCalendarManager] Диапазон дат успешно заблокирован. Заблокировано дней: ${blockedDays.length}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при блокировке диапазона дат:', error);
-        }
-    }
-
-    /**
-     * Обновление отображения всех дней в календаре
-     */
-    updateAllDaysDisplay() {
-        const monthYearElement = document.querySelector('[current_month_year]');
-        if (!monthYearElement) {
-            console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-            return;
-        }
-
-        try {
-            const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
-            if (!currentMonthName || !currentYear || !MONTH_MAP[currentMonthName]) {
-                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${monthYearElement.textContent}`);
-                return;
-            }
-
-            const basePrice = this.getBasePrice();
-            const yearNum = parseInt(currentYear);
-            const monthNum = MONTH_MAP[currentMonthName];
-            const monthYearKey = `${currentYear}-${monthNum}`;
-
-            // Используем DocumentFragment для оптимизации DOM-операций
-            const fragment = document.createDocumentFragment();
-
-            // Проходим по всем ячейкам календаря
-            const dayWrappers = document.querySelectorAll('.calendar_day-wrapper');
-            dayWrappers.forEach(dayWrapper => {
-                const cell = dayWrapper.querySelector('[day]');
-                if (!cell) return;
-
-                const dayText = cell.textContent.trim();
-                if (dayText === "") return;
-
-                try {
-                    const day = parseInt(dayText);
-                    const fullDate = this.createFullDate(day, currentMonthName, yearNum);
-                    if (!fullDate) return;
-
-                    const timestamp = fullDate.timestamp;
-                    const dateString = this.formatDate(day, monthNum, yearNum);
-
-                    // Проверяем статусы
-                    const isInRange = this.isDateInRanges(fullDate);
-                    const isExcluded = this.isDateExcluded(timestamp);
-                    const isBlocked = this.isDateBlocked(dateString, monthYearKey);
-                    const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
-
-                    // Обновляем классы для отображения статуса
-                    dayWrapper.classList.toggle('is-selected', isInRange && !isExcluded && !isBlocked);
-                    dayWrapper.classList.toggle('is-active', hasDiscount && !isExcluded && !isBlocked);
-                    dayWrapper.classList.toggle('is-blocked', isBlocked);
-                    dayWrapper.classList.toggle('is-blocked-active', isBlocked);
-
-                    // Обновляем отображение цены
-                    const servicePriceElement = dayWrapper.querySelector('[service-price]');
-                    if (servicePriceElement) {
-                        if (isBlocked) {
-                            servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthYearKey);
-                        } else if (isExcluded) {
-                            servicePriceElement.textContent = basePrice;
-                        } else if (hasDiscount) {
-                            servicePriceElement.textContent = this.calendarData.dateDiscounts[timestamp];
-                        } else {
-                            servicePriceElement.textContent = basePrice;
-                        }
-                    }
-
-                    // Отмечаем первый день диапазона при выборе
-                    if (this.tempSelection.start &&
-                        this.tempSelection.startMonth === currentMonthName &&
-                        this.tempSelection.startYear === yearNum &&
-                        this.tempSelection.start === day) {
-                        dayWrapper.classList.add('is-wait');
-                    }
-
-                    // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                    fragment.appendChild(dayWrapper.cloneNode(true));
-                } catch (error) {
-                    console.error(`[UnifiedCalendarManager] Ошибка при обработке дня ${dayText}:`, error);
-                }
-            });
-
-            // Обновляем данные о ценах в хранилище
-            if (this.calendarData.basePrices[monthYearKey]) {
-                this.saveMonthData(monthYearKey);
-            }
-
-            console.log(`[UnifiedCalendarManager] Отображение календаря обновлено для месяца ${monthYearKey}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при обновлении отображения календаря:', error);
-        }
-    }
-
-    /**
-     * Генерация календаря для указанного месяца и года
-     * @param {string} dateString - Строка даты в формате "MM.YYYY"
-     */
-    generateCalendar(dateString) {
-        if (!dateString || !dateString.includes('.')) {
-            console.error(`[UnifiedCalendarManager] Некорректный формат даты: ${dateString}`);
-            return;
-        }
-
-        try {
-            const [month, year] = dateString.split('.').map(Number);
-            if (isNaN(month) || isNaN(year) || month < 1 || month > 12 || year < 1900 || year > 2100) {
-                console.error(`[UnifiedCalendarManager] Недопустимые значения месяца или года: месяц=${month}, год=${year}`);
-                return;
-            }
-
-            const firstDay = new Date(year, month - 1, 1);
-            const lastDay = new Date(year, month, 0);
-            const daysInMonth = lastDay.getDate();
-
-            const calendarArray = [];
-            let week = Array(7).fill('');
-            const adjustedFirstDay = (firstDay.getDay() === 0) ? 6 : firstDay.getDay() - 1;
-
-            let dayCounter = 1;
-            for (let i = 0; i < adjustedFirstDay; i++) {
-                week[i] = '';
-            }
-
-            for (let col = adjustedFirstDay; col < 7; col++) {
-                week[col] = dayCounter++;
-            }
-            calendarArray.push(week);
-
-            while (dayCounter <= daysInMonth) {
-                week = Array(7).fill('');
-                for (let col = 0; col < 7 && dayCounter <= daysInMonth; col++) {
-                    week[col] = dayCounter++;
-                }
-                calendarArray.push(week);
-            }
-
-            // Сбрасываем состояние блокировки
-            const selectedElements_blocked = document.querySelectorAll('.calendar_day-wrapper.is-blocked.is-blocked-active');
-            const button_block = document.querySelector('[button_block]');
-            if (button_block) button_block.classList.remove('is--add-service');
-
-            selectedElements_blocked.forEach(element => {
-                element.classList.remove('is-blocked-active');
-            });
-
-            // Заполняем календарь датами используя DocumentFragment для оптимизации
-            const fragment = document.createDocumentFragment();
-            let flatDays = calendarArray.flat();
-
-            for (let i = 0; i < 42; i++) {
-                const cell = document.querySelector(`[day='${i}']`);
-                const dayWrapper = cell ? cell.closest('.calendar_day-wrapper') : null;
-                if (!cell || !dayWrapper) continue;
-
-                try {
-                    const day = flatDays[i];
-                    const servicePrice = dayWrapper.querySelector('[service-price]');
-                    const priceCurrency = dayWrapper.querySelector('[price-currency]');
-
-                    if (day) {
-                        cell.textContent = day;
-                        dayWrapper.classList.remove('not_exist');
-                        if (servicePrice) {
-                            servicePrice.style.display = '';
-                        }
-                        if (priceCurrency) {
-                            priceCurrency.style.display = '';
-                        }
-                    } else {
-                        cell.textContent = '';
-                        dayWrapper.classList.add('not_exist');
-                        if (servicePrice) {
-                            servicePrice.style.display = 'none';
-                        }
-                        if (priceCurrency) {
-                            priceCurrency.style.display = 'none';
-                        }
-                    }
-
-                    // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                    fragment.appendChild(dayWrapper.cloneNode(true));
-                } catch (error) {
-                    console.error(`[UnifiedCalendarManager] Ошибка при генерации ячейки ${i}:`, error);
-                }
-            }
-
-            this.updateAllDaysDisplay();
-            console.log(`[UnifiedCalendarManager] Календарь сгенерирован для ${month}.${year}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при генерации календаря:', error);
-        }
-    }DateBlocked(dateString, monthYearKey);
-                    const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
-
-                    // Обновляем классы для отображения статуса
-                    dayWrapper.classList.toggle('is-selected', isInRange && !isExcluded && !isBlocked);
-                    dayWrapper.classList.toggle('is-active', hasDiscount && !isExcluded && !isBlocked);
-                    dayWrapper.classList.toggle('is-blocked', isBlocked);
-                    dayWrapper.classList.toggle('is-blocked-active', isBlocked);
-
-                    // Обновляем отображение цены
-                    const servicePriceElement = dayWrapper.querySelector('[service-price]');
-                    if (servicePriceElement) {
-                        if (isBlocked) {
-                            servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthYearKey);
-                        } else if (isExcluded) {
-                            servicePriceElement.textContent = basePrice;
-                        } else if (hasDiscount) {
-                            servicePriceElement.textContent = this.calendarData.dateDiscounts[timestamp];
-                        } else {
-                            servicePriceElement.textContent = basePrice;
-                        }
-                    }
-
-                    // Отмечаем первый день диапазона при выборе
-                    if (this.tempSelection.start &&
-                        this.tempSelection.startMonth === currentMonthName &&
-                        this.tempSelection.startYear === yearNum &&
-                        this.tempSelection.start === day) {
-                        dayWrapper.classList.add('is-wait');
-                    }
-
-                    // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                    fragment.appendChild(dayWrapper.cloneNode(true));
-                } catch (error) {
-                    console.error(`[UnifiedCalendarManager] Ошибка при обработке дня ${dayText}:`, error);
-                }
-            });
-
-            // Обновляем данные о ценах в хранилище
-            if (this.calendarData.basePrices[monthYearKey]) {
-                this.saveMonthData(monthYearKey);
-            }
-
-            console.log(`[UnifiedCalendarManager] Отображение календаря обновлено для месяца ${monthYearKey}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при обновлении отображения календаря:', error);
-        }
-    }DateBlocked(dateString, monthYearKey);
-            const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
-
-            // Обновляем классы для отображения статуса
-            dayWrapper.classList.toggle('is-selected', isInRange && !isExcluded && !isBlocked);
-            dayWrapper.classList.toggle('is-active', hasDiscount && !isExcluded && !isBlocked);
-            dayWrapper.classList.toggle('is-blocked', isBlocked);
-            dayWrapper.classList.toggle('is-blocked-active', isBlocked);
-
-            // Обновляем отображение цены
-            const servicePriceElement = dayWrapper.querySelector('[service-price]');
-            if (servicePriceElement) {
-                if (isBlocked) {
-                    servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthYearKey);
-                } else if (isExcluded) {
-                    servicePriceElement.textContent = basePrice;
-                } else if (hasDiscount) {
-                    servicePriceElement.textContent = this.calendarData.dateDiscounts[timestamp];
-                } else {
-                    servicePriceElement.textContent = basePrice;
-                }
-            }
-
-            // Отмечаем первый день диапазона при выборе
-            if (this.tempSelection.start &&
-                this.tempSelection.startMonth === currentMonthName &&
-                this.tempSelection.startYear === yearNum &&
-                this.tempSelection.start === day) {
-                dayWrapper.classList.add('is-wait');
-            }
-        });
-
-        // Обновляем данные о ценах в хранилище
-        if (this.calendarData.basePrices[monthYearKey]) {
-            this.saveMonthData(monthYearKey);
-        }
-    }
-
-    /**
-     * Генерация календаря для указанного месяца и года
-     */
-    generateCalendar(dateString) {
-        const [month, year] = dateString.split('.').map(Number);
-        const firstDay = new Date(year, month - 1, 1);
-        const lastDay = new Date(year, month, 0);
-        const daysInMonth = lastDay.getDate();
-
-        const calendarArray = [];
-        let week = Array(7).fill('');
-        const adjustedFirstDay = (firstDay.getDay() === 0) ? 6 : firstDay.getDay() - 1;
-
-        let dayCounter = 1;
-        for (let i = 0; i < adjustedFirstDay; i++) {
-            week[i] = '';
-        }
-
-        for (let col = adjustedFirstDay; col < 7; col++) {
-            week[col] = dayCounter++;
-        }
-        calendarArray.push(week);
-
-        while (dayCounter <= daysInMonth) {
-            week = Array(7).fill('');
-            for (let col = 0; col < 7 && dayCounter <= daysInMonth; col++) {
-                week[col] = dayCounter++;
-            }
-            calendarArray.push(week);
-        }
-
-        // Сбрасываем состояние блокировки
-        const selectedElements_blocked = document.querySelectorAll('.calendar_day-wrapper.is-blocked.is-blocked-active');
-        const button_block = document.querySelector('[button_block]');
-        if (button_block) button_block.classList.remove('is--add-service');
-
-        selectedElements_blocked.forEach(element => {
-            element.classList.remove('is-blocked-active');
-        });
-
-        // Заполняем календарь датами
-        let flatDays = calendarArray.flat();
-        for (let i = 0; i < 42; i++) {
-            const cell = document.querySelector(`[day='${i}']`);
-            const dayWrapper = cell ? cell.closest('.calendar_day-wrapper') : null;
-            if (cell && dayWrapper) {
-                const day = flatDays[i];
-                const servicePrice = dayWrapper.querySelector('[service-price]');
-                const priceCurrency = dayWrapper.querySelector('[price-currency]');
-
-                if (day) {
-                    cell.textContent = day;
-                    dayWrapper.classList.remove('not_exist');
-                    if (servicePrice) {
-                        servicePrice.style.display = '';
-                    }
-                    if (priceCurrency) {
-                        priceCurrency.style.display = '';
-                    }
-                } else {
-                    cell.textContent = '';
-                    dayWrapper.classList.add('not_exist');
-                    if (servicePrice) {
-                        servicePrice.style.display = 'none';
-                    }
-                    if (priceCurrency) {
-                        priceCurrency.style.display = 'none';
-                    }
-                }
-            }
-        }
-
-        this.updateAllDaysDisplay();
-    }
-
-    /**
-     * Установка текущей даты
-     */
-    setCurrentDate() {
-        try {
-            const now = new Date();
-            if (isNaN(now.getTime())) {
-                console.error('[UnifiedCalendarManager] Ошибка получения текущей даты');
-                return;
-            }
-
-            const currentMonth = REVERSE_MONTH_MAP[(now.getMonth() + 1).toString().padStart(2, '0')];
-            const currentYear = now.getFullYear();
-            const monthYearElement = document.querySelector('[current_month_year]');
-
-            if (monthYearElement) {
-                monthYearElement.textContent = `${currentMonth} ${currentYear}`;
-            } else {
-                console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-            }
-
-            console.log(`[UnifiedCalendarManager] Установлена текущая дата: ${currentMonth} ${currentYear}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при установке текущей даты:', error);
-        }
-    }
-
-    /**
-     * Обновление календаря для текущего месяца
-     */
-    updateCalendar() {
-        const monthYearElement = document.querySelector('[current_month_year]');
-        if (!monthYearElement) {
-            console.warn('[UnifiedCalendarManager] Элемент текущего месяца и года не найден');
-            return;
-        }
-
-        try {
-            const currentMonthText = monthYearElement.textContent.trim();
-            const [monthName, year] = currentMonthText.split(' ');
-
-            if (!monthName || !year || !MONTH_MAP[monthName]) {
-                console.error(`[UnifiedCalendarManager] Некорректный формат месяца и года: ${currentMonthText}`);
-                return;
-            }
-
-            const current_month = `${MONTH_MAP[monthName]}.${year}`;
-            this.generateCalendar(current_month);
-            this.loadMonthPrices();
-
-            console.log(`[UnifiedCalendarManager] Календарь обновлен для ${monthName} ${year}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при обновлении календаря:', error);
-        }
-    }
-
-    /**
-     * Загрузка цен для текущего месяца
-     */
-    loadMonthPrices() {
-        const monthKey = this.currentMonthKey;
-        if (!monthKey) {
-            console.error('[UnifiedCalendarManager] Текущий ключ месяца не определен');
-            return;
-        }
-
-        try {
-            const [year, month] = monthKey.split('-');
-            if (!year || !month) {
-                console.error(`[UnifiedCalendarManager] Неверный формат ключа месяца: ${monthKey}`);
-                return;
-            }
-
-            // Если нет данных для текущего месяца, загружаем их
-            if (!this.calendarData.basePrices[monthKey]) {
-                this.loadMonthData(monthKey);
-            }
-
-            const monthPrices = this.calendarData.basePrices[monthKey].prices || [];
-            const defaultCost = this.calendarData.basePrices[monthKey].defaultCost;
-
-            // Создаем DocumentFragment для оптимизации DOM-операций
-            const fragment = document.createDocumentFragment();
-            const updatedCells = [];
-
-            document.querySelectorAll('.calendar_day-wrapper:not(.not_exist)').forEach(dayWrapper => {
-                const dayElement = dayWrapper.querySelector('[day]');
-                const servicePriceElement = dayWrapper.querySelector('[service-price]');
-
-                if (!dayElement || !servicePriceElement) return;
-
-                try {
-                    const dayText = dayElement.textContent.trim();
-                    if (dayText === "") return;
-
-                    const day = parseInt(dayText);
-                    if (isNaN(day) || day < 1 || day > 31) {
-                        console.warn(`[UnifiedCalendarManager] Некорректный день месяца: ${dayText}`);
-                        return;
-                    }
-
-                    const date = this.formatDate(day, month, year);
-                    const dateString = this.formatDate(day, month, year);
-
-                    // Проверяем статусы
-                    const isBlocked = this.isDateBlocked(dateString, monthKey);
-
-                    if (isBlocked) {
-                        // Если день заблокирован, устанавливаем классы и цену 0
-                        dayWrapper.classList.add('is-blocked');
-                        dayWrapper.classList.add('is-blocked-active');
-                        servicePriceElement.textContent = this.getBlockedDatePrice(dateString, monthKey);
-                    } else {
-                        // Иначе используем цену из базовых цен или по умолчанию
-                        const priceObj = monthPrices.find(item => item.date === date);
-                        const finalPrice = priceObj ? priceObj.price : defaultCost;
-                        servicePriceElement.textContent = finalPrice;
-
-                        // Проверяем, не является ли это днем со скидкой
-                        const timestamp = new Date(parseInt(year), parseInt(month) - 1, day).getTime();
-                        const hasDiscount = this.calendarData.dateDiscounts[timestamp] !== undefined;
-                        dayWrapper.classList.toggle('is-active', hasDiscount);
-                    }
-
-                    // Добавляем ячейку в список обновленных
-                    updatedCells.push(day);
-
-                    // Клонируем и добавляем в фрагмент для оптимизации перерисовки
-                    fragment.appendChild(dayWrapper.cloneNode(true));
-                } catch (error) {
-                    console.error('[UnifiedCalendarManager] Ошибка при обработке дня:', error);
-                }
-            });
-
-            console.log(`[UnifiedCalendarManager] Загружены цены для месяца ${monthKey}. Обновлено ячеек: ${updatedCells.length}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при загрузке цен для месяца:', error);
-        }
-    }
-
-    /**
-     * Инициализация обработчиков событий
-     */
-    initHandlers() {
-        try {
-            // Обработчик для кнопки очистки дат
-            const clearDatesBtn = document.querySelector('[clear-dates]');
-            if (clearDatesBtn) {
-                clearDatesBtn.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    this.clearAllDates();
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка очистки дат не найдена');
-            }
-
-            // Обработчик для кнопки отмены последнего диапазона
-            const cancelBtn = document.querySelector('[calendar-choosen-cancel]');
-            if (cancelBtn) {
-                cancelBtn.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    this.cancelLastRange();
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка отмены диапазона не найдена');
-            }
-
-            // Обработчики для кнопок навигации по месяцам
-            const prevBtn = document.querySelector('.calendar_prev');
-            const nextBtn = document.querySelector('.calendar_next');
-
-            if (prevBtn) {
-                prevBtn.addEventListener('click', () => {
-                    this.navigateMonth('prev');
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка предыдущего месяца не найдена');
-            }
-
-            if (nextBtn) {
-                nextBtn.addEventListener('click', () => {
-                    this.navigateMonth('next');
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка следующего месяца не найдена');
-            }
-
-            // Обработчик для выбора дней календаря
-            document.addEventListener('click', (event) => {
-                this.handleDayClick(event);
-            });
-
-            // Обработчик для применения скидки к выбранному диапазону
-            const applyBtn = document.querySelector('[calendar-apply-button]');
-            if (applyBtn) {
-                applyBtn.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    this.applyDiscountToRange();
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка применения скидки не найдена');
-            }
-
-            // Обработчик для кнопки блокировки дат
-            const blockBtn = document.querySelector('[button_block]');
-            if (blockBtn) {
-                blockBtn.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    this.blockSelectedRange();
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Кнопка блокировки дат не найдена');
-            }
-
-            // Обработчик для изменения базовой стоимости
-            const costInput = document.querySelector('input[name="cost_per_hour"]');
-            if (costInput) {
-                costInput.addEventListener('input', () => {
-                    this.saveGlobalSettings();
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Поле ввода стоимости не найдено');
-            }
-
-            // Обработчик для свитчера выходных дней
-            const weekendDiscountCheckbox = document.querySelector('#weekend_discount');
-            const weekendDiscountInput = document.querySelector('input[weekend_discount]');
-
-            if (weekendDiscountCheckbox && weekendDiscountInput) {
-                weekendDiscountCheckbox.addEventListener('change', () => {
-                    if (weekendDiscountCheckbox.checked) {
-                        const discountPercent = parseFloat(weekendDiscountInput.value.replace(/[^\d.]/g, '')) || 0;
-                        this.applyWeekendDiscount(discountPercent);
-                    } else {
-                        // Сбрасываем скидки для выходных
-                        this.resetWeekendDiscounts();
-                    }
-                });
-
-                weekendDiscountInput.addEventListener('input', () => {
-                    if (weekendDiscountCheckbox.checked) {
-                        const discountPercent = parseFloat(weekendDiscountInput.value.replace(/[^\d.]/g, '')) || 0;
-                        this.applyWeekendDiscount(discountPercent);
-                    }
-                });
-            } else {
-                console.warn('[UnifiedCalendarManager] Элементы управления скидкой для выходных не найдены');
-            }
-
-            console.log('[UnifiedCalendarManager] Обработчики событий инициализированы');
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при инициализации обработчиков событий:', error);
-        }
-    }
-
-    /**
-     * Сброс скидок для выходных дней
-     */
-    resetWeekendDiscounts() {
-        const monthKey = this.currentMonthKey;
-        if (!monthKey) return;
-
-        const [year, month] = monthKey.split('-');
-        const basePrice = this.getBasePrice();
-        const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
-
-        for (let day = 1; day <= daysInMonth; day++) {
-            const date = new Date(parseInt(year), parseInt(month) - 1, day);
-            const isWeekend = (date.getDay() === 0 || date.getDay() === 6); // воскресенье или суббота
-
-            if (isWeekend) {
-                const dateString = this.formatDate(day, month, year);
-                const timestamp = date.getTime();
-
-                // Пропускаем заблокированные дни
-                if (this.isDateBlocked(dateString, monthKey)) continue;
-
-                // Удаляем скидку
-                delete this.calendarData.dateDiscounts[timestamp];
-
-                // Обновляем базовые цены
-                if (this.calendarData.basePrices[monthKey]) {
-                    const prices = this.calendarData.basePrices[monthKey].prices;
-                    const priceIndex = prices.findIndex(item => item.date === dateString);
-
-                    if (priceIndex !== -1) {
-                        prices[priceIndex].price = basePrice;
-                    }
-                }
-            }
-        }
-
-        this.saveMonthData(monthKey);
-        this.updateAllDaysDisplay();
-    }
-
-    /**
-     * Навигация по месяцам (prev/next)
-     */
-    navigateMonth(direction) {
-        const monthYearElement = document.querySelector('[current_month_year]');
-        if (!monthYearElement) return;
-
-        const currentMonthText = monthYearElement.textContent.trim();
-        let [monthName, year] = currentMonthText.split(' ');
-        let monthNum = MONTH_MAP[monthName];
-        let yearNum = Number(year);
-
-        if (direction === 'prev') {
-            if (monthNum === '01') {
-                monthNum = '12';
-                yearNum -= 1;
-            } else {
-                monthNum = (parseInt(monthNum) - 1).toString().padStart(2, '0');
-            }
-        } else {
-            if (monthNum === '12') {
-                monthNum = '01';
-                yearNum += 1;
-            } else {
-                monthNum = (parseInt(monthNum) + 1).toString().padStart(2, '0');
-            }
-        }
-
-        monthYearElement.textContent = `${REVERSE_MONTH_MAP[monthNum]} ${yearNum}`;
-
-        // Обновляем текущий ключ месяца
-        this.currentMonthKey = `${yearNum}-${monthNum}`;
-
-        // Загружаем данные для нового месяца
-        this.loadMonthData(this.currentMonthKey);
-
-        // Обновляем календарь
-        this.updateCalendar();
-    }
-
-    /**
-     * Обработчик клика по дню календаря
-     */
-    handleDayClick(event) {
-        const dayWrapper = event.target.closest('.calendar_day-wrapper');
-        const button_open = document.querySelector('[button_open]');
-        const button_block = document.querySelector('[button_block]');
-
-        if (!dayWrapper) return;
-
-        // Если процесс выбора не завершен, игнорируем
-        if (!this.tempSelection.isRangeConfirmed) {
-            return;
-        }
-
-        // Обработка заблокированных дней
-        if (dayWrapper.classList.contains('is-blocked')) {
-            this.handleBlockedDayClick(dayWrapper);
-            return;
-        }
-
-        const cell = dayWrapper.querySelector('[day]');
-        if (!cell) return;
-
-        const dayText = cell.textContent.trim();
-        if (dayText === "") return;
-
-        const currentDate = parseInt(dayText);
-        const monthYearElement = document.querySelector('[current_month_year]');
-        if (!monthYearElement) return;
-
-        const [currentMonthName, currentYear] = monthYearElement.textContent.trim().split(' ');
-        const fullDate = this.createFullDate(currentDate, currentMonthName, parseInt(currentYear));
-
-        const isInRange = this.isDateInRanges(fullDate);
-
-        // Сценарий 1: Исключение выбранного дня из диапазона
-        if (isInRange && !this.isDateExcluded(fullDate.timestamp)) {
-            this.excludeDay(dayWrapper, fullDate, currentDate, currentMonthName, currentYear);
-        }
-        // Сценарий 2: Начало нового диапазона или завершение выбора
-        else {
-            if (!this.tempSelection.start) {
-                this.startRangeSelection(dayWrapper, currentDate, currentMonthName, currentYear, fullDate);
-            } else {
-                this.completeRangeSelection(currentDate, currentMonthName, currentYear, fullDate);
-            }
-        }
-
-        this.updateAllDaysDisplay();
-
-        if (button_open && (this.calendarData.dateRanges.length > 0 || this.calendarData.excludedDates.size > 0)) {
-            button_open.classList.add('is--add-service');
-        }
-    }
-
-    /**
-     * Начало выбора диапазона дат
-     * @param {HTMLElement} dayWrapper - DOM-элемент ячейки дня
-     * @param {number} currentDate - Текущий день
-     * @param {string} currentMonthName - Название текущего месяца
-     * @param {number} currentYear - Текущий год
-     * @param {Object} fullDate - Объект даты
-     */
-    startRangeSelection(dayWrapper, currentDate, currentMonthName, currentYear, fullDate) {
-        try {
-            if (!dayWrapper || !fullDate || !fullDate.timestamp) {
-                console.error('[UnifiedCalendarManager] Неверные параметры для начала выбора диапазона');
-                return;
-            }
-
-            this.clearWaitState();
-
-            // Если день был исключен, удаляем его из исключений
-            if (this.isDateExcluded(fullDate.timestamp)) {
-                this.calendarData.excludedDates.delete(fullDate.timestamp);
-            }
-
-            this.tempSelection.start = currentDate;
-            this.tempSelection.startMonth = currentMonthName;
-            this.tempSelection.startYear = parseInt(currentYear);
-
-            dayWrapper.classList.add('is-wait');
-            dayWrapper.classList.add('is-selected');
-
-            console.log(`[UnifiedCalendarManager] Начат выбор диапазона с даты: ${currentDate} ${currentMonthName} ${currentYear}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при начале выбора диапазона:', error);
-        }
-    }
-
-    /**
-     * Завершение выбора диапазона дат
-     * @param {number} currentDate - Текущий день
-     * @param {string} currentMonthName - Название текущего месяца
-     * @param {number} currentYear - Текущий год
-     * @param {Object} fullDate - Объект даты
-     */
-    completeRangeSelection(currentDate, currentMonthName, currentYear, fullDate) {
-        try {
-            if (!fullDate || !fullDate.timestamp || !this.tempSelection.start) {
-                console.error('[UnifiedCalendarManager] Неверные параметры для завершения выбора диапазона');
-                return;
-            }
-
-            const startDate = this.createFullDate(
-                this.tempSelection.start,
-                this.tempSelection.startMonth,
-                this.tempSelection.startYear
-            );
-
-            if (!startDate) {
-                console.error('[UnifiedCalendarManager] Не удалось создать объект начальной даты');
-                return;
-            }
-
-            const endDate = fullDate;
-
-            // Проверка на перекрытие с существующими диапазонами
-            if (this.isRangeOverlap(startDate.timestamp, endDate.timestamp)) {
-                console.warn('[UnifiedCalendarManager] Новый диапазон пересекается с существующими');
-                // Можно добавить здесь уведомление пользователя
-            }
-
-            // Сортируем даты, чтобы начальная была меньше конечной
-            let start, end;
-            if (startDate.timestamp > endDate.timestamp) {
-                start = endDate;
-                end = startDate;
-            } else {
-                start = startDate;
-                end = endDate;
-            }
-
-            // Добавляем новый диапазон
-            this.calendarData.dateRanges.push({ start, end });
-
-            this.tempSelection.isRangeConfirmed = false;
-            this.toggleSettingsVisibility(true);
-            this.updateChosenDates();
-
-            // Сбрасываем поле скидки
-            const selectedDiscountInput = document.querySelector('#selected_discount');
-            if (selectedDiscountInput) {
-                selectedDiscountInput.value = '';
-            }
-
-            this.clearWaitState();
-            this.tempSelection.start = null;
-            this.tempSelection.startMonth = null;
-            this.tempSelection.startYear = null;
-
-            console.log(`[UnifiedCalendarManager] Завершен выбор диапазона: ${this.formatDateRange({ start, end })}`);
-        } catch (error) {
-            console.error('[UnifiedCalendarManager] Ошибка при завершении выбора диапазона:', error);
-        }
-    }
-}
-        const endDate = fullDate;
-
-        // Сортируем даты, чтобы начальная была меньше конечной
-        let start, end;
-        if (startDate.timestamp > endDate.timestamp) {
-            start = endDate;
-            end = startDate;
-        } else {
-            start = startDate;
-            end = endDate;
-        }
-
-        // Добавляем новый диапазон
-        this.calendarData.dateRanges.push({ start, end });
-
-        this.tempSelection.isRangeConfirmed = false;
-        this.toggleSettingsVisibility(true);
-        this.updateChosenDates();
-
-        // Сбрасываем поле скидки
-        const selectedDiscountInput = document.querySelector('#selected_discount');
-        if (selectedDiscountInput) {
-            selectedDiscountInput.value = '';
-        }
-
-        this.clearWaitState();
-        this.tempSelection.start = null;
-        this.tempSelection.startMonth = null;
-        this.tempSelection.startYear = null;
-    }
-}
-
-// Запуск после загрузки страницы
-document.addEventListener('DOMContentLoaded', () => {
-    window.calendarManager = new UnifiedCalendarManager();
-});
